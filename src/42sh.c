@@ -146,7 +146,7 @@ static void init_builtins_hash_map(struct hash_map *builtins)
     hash_insert_builtin(builtins, "bg", bg);
     hash_insert_builtin(builtins, "fg", fg);
     //hash_insert_builtin(builtins, "wait", wait);
-    //hash_insert_builtin(builtins, "export", jobs);
+    //hash_insert_builtin(builtins, "jobs", jobs);
 }
 
 static void init_all(struct hash_map *functions,
