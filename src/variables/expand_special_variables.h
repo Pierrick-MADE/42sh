@@ -3,8 +3,8 @@
 * @author Coder : cloe.lacombe
 * @author Tester :
 * @author Reviewer :
-* @author Integrator :
 */
 
-char *expand_special_variables(char *variable);
 #pragma once
+
+char *expand_special_variables(char *variable);

@@ -31,6 +31,7 @@
 #include "builtins/cd.h"
 #include "builtins/exit.h"
 #include "builtins/export.h"
+#include "builtins/fg.h"
 
 static void sigint_handler(int signum)
 {
@@ -141,6 +142,10 @@ static void init_builtins_hash_map(struct hash_map *builtins)
     hash_insert_builtin(builtins, "exit", exit_builtin);
     hash_insert_builtin(builtins, "echo", echo);
     hash_insert_builtin(builtins, "export", export);
+    //hash_insert_builtin(builtins, "bg", bg);
+    hash_insert_builtin(builtins, "fg", fg);
+    //hash_insert_builtin(builtins, "wait", wait);
+    //hash_insert_builtin(builtins, "export", jobs);
 }
 
 static void init_all(struct hash_map *functions,

@@ -57,6 +57,7 @@ set(SRC_FILES
     src/builtins/break.c
     src/builtins/exit.c
     src/builtins/export.c
+    src/builtins/fg.c
     src/path_expention/path_exepension.c
     src/variables/expand_special_variables.c
 )

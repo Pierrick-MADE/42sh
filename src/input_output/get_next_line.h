@@ -7,6 +7,8 @@
 
 #pragma once
 
+#include <sys/types.h>
+
 #include "../parameters_handling/parameters_handler.h"
 #include "../data_structures/hash_map.h"
 
@@ -37,6 +39,7 @@ struct shell_environment
     char *old_pwd;
     int argc;
     char **argv;
+    pid_t pid;
 };
 
 /**

@@ -6,6 +6,8 @@
 */
 
 #include <stdio.h>
+#include <stdbool.h>
+
 #include "../data_structures/queue.h"
 
 #pragma once
@@ -122,6 +124,7 @@ struct instruction
     void *data; /**< @brief contains a ast node */
     enum token_parser_type type; /**< @brief type of ast node */
     struct instruction *next; /**< @brief use for ; cases */
+    bool is_binary_and;
 };
 
 /**

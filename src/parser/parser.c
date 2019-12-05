@@ -162,6 +162,7 @@ struct instruction *build_instruction(enum token_parser_type type,
     instruction->data = input_instr;
     instruction->type = type;
     instruction->next = NULL;
+    instruction->is_binary_and = false;
     return instruction;
 }
 
@@ -1099,11 +1100,14 @@ static struct instruction *parse_list(struct queue *lexer)
 
     while (NEXT_IS(";") || NEXT_IS("&"))
     {
-        EAT();
+        struct token_lexer *separator = token_lexer_pop(lexer);
 
         if (!tmp)
             return free_instructions(1, and_or);
 
+        if (strcmp(separator->data, "&") == 0)
+            tmp->is_binary_and = true;
+        token_lexer_free(&separator);
         tmp->next = parse_and_or(lexer);
         tmp = tmp->next;
     }
