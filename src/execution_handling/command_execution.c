@@ -36,14 +36,13 @@ int exec_cmd(struct instruction *cmd_container)
             errx(-1, "execvp has failed");
     }
 
+    g_env.pid = pid;
+
     if (cmd_container->is_binary_and) //not wait
-    {
-        g_env.pid = pid;
         return 0;
-    }
 
     int wstatus;
-    waitpid(pid, &wstatus, 0);
+    waitpid(pid, &wstatus, WUNTRACED);
     return WEXITSTATUS(wstatus);
 }
 

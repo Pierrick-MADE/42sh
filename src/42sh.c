@@ -188,8 +188,16 @@ static void init_all(struct hash_map *functions,
     g_env.path_to_binary = path;
 }
 
+static void sigstp_handler(int signum)
+{
+    if (signum == SIGTSTP)
+        kill(g_env.pid, SIGSTOP);
+}
+
 static void handle_signal(void)
 {
+    if (signal(SIGTSTP, sigstp_handler) == SIG_ERR)
+        errx(1, "an error occurred while setting up a signal handler");
     if (signal(SIGINT, sigint_handler) == SIG_ERR)
         errx(1, "an error occurred while setting up a signal handler");
 }
