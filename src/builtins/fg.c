@@ -8,6 +8,6 @@
 int fg(char **params)
 {
     int wstatus;
-    waitpid(g_env.pid, &wstatus, 0);
+    waitpid(g_env.pid, &wstatus, WUNTRACED);
     return WEXITSTATUS(wstatus);
 }
