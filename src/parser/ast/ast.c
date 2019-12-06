@@ -40,6 +40,7 @@ void handle_sigint(int signal)
     }
 }
 
+
 static int handle_if(struct instruction *ast)
 {
     struct if_instruction *if_struct = ast->data;
@@ -53,6 +54,7 @@ static int handle_if(struct instruction *ast)
     struct instruction *else_clause = if_struct->else_container;
     return execute_ast(else_clause);
 }
+
 
 static int handle_and_or_instruction(struct instruction *ast)
 {
@@ -72,6 +74,7 @@ static int handle_and_or_instruction(struct instruction *ast)
     return return_code;
 }
 
+
 static bool is_func(struct instruction *ast)
 {
     struct command_container *command = ast->data;
@@ -80,12 +83,22 @@ static bool is_func(struct instruction *ast)
     return hash_find(g_env.functions, command->command) != NULL;
 }
 
+
 static int exec_func(struct instruction *ast)
 {
     struct command_container *command = ast->data;
+    int old_argc = g_env.argc;
+    char **old_argv = g_env.argv;
+    g_env.argc = get_nb_params(command->params) - 1;
+    g_env.argv = command->params;
     struct instruction *code = hash_find(g_env.functions, command->command);
-    return execute_ast(code);
+    int to_return = execute_ast(code);
+    g_env.argc = old_argc;
+    g_env.argv = old_argv;
+    return to_return;
+
 }
+
 
 static bool is_builtin(struct instruction *ast)
 {
@@ -94,6 +107,7 @@ static bool is_builtin(struct instruction *ast)
         return false;
     return hash_find_builtin(g_env.builtins, command->command) != NULL;
 }
+
 
 //for now only execute shopt
 static int exec_builtin(struct instruction *ast)
