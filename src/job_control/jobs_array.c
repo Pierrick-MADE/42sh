@@ -87,7 +87,7 @@ extern int is_pid_in_array(pid_t pid)
     for (int i = 0; i < MAX_JOBS; i++)
     {
         if (g_env.childs_pid[i]->pid == pid)
-            return 1;
+            return i;
     }
 
     return 0;

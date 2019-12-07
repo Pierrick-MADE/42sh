@@ -7,6 +7,7 @@
 #include <signal.h>
 #include <stdio.h>
 #include <sys/types.h>
+#include <sys/wait.h>
 #include <sys/stat.h>
 #include <fcntl.h>
 #include <string.h>
@@ -201,12 +202,32 @@ static void sigstp_handler(int signum)
     }
 }
 
+
+static void sigchild_handler(int signum)
+{
+    if (signum == SIGCHLD)
+    {
+        int wstatus;
+        pid_t pid = wait(&wstatus);
+
+        if (WIFEXITED(wstatus))
+        {
+            int index_job = is_pid_in_array(pid);
+            print_access_jobs(g_env.childs_pid[index_job], "Done ");
+            terminate_job(g_env.childs_pid[index_job]);
+        }
+    }
+}
+
 static void handle_signal(void)
 {
     if (signal(SIGTSTP, sigstp_handler) == SIG_ERR)
         errx(1, "an error occurred while setting up a signal handler");
     if (signal(SIGINT, sigint_handler) == SIG_ERR)
         errx(1, "an error occurred while setting up a signal handler");
+    if (signal(SIGCHLD, sigchild_handler) == SIG_ERR)
+        errx(1, "an error occurred while setting up a signal handler");
+
 }
 
 static int execute_and_print_ast(struct instruction *ast)
