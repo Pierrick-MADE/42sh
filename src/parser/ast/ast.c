@@ -25,16 +25,20 @@
 #include "../../memory/memory.h"
 #include "../../data_structures/array_list.h"
 #include "../../data_structures/data_string.h"
-#include "../../variables/expand_special_variables.h"
+#include "../../special_variables/expand_special_variables.h"
 #include "../../path_expention/path_exepension.h"
+#include "../../arithmetic_expression/parser.h"
+#include "../../arithmetic_expression/tree.h"
+#include "../../command_substitution/command_substitution.h"
 
 bool g_have_to_stop = 0; //to break in case of signal
 
-#define IFS " \t\n"
+// IFS " \t\n"
+#define MARK_IFS -5
 
-static char *expand(char **to_expand, bool is_quote, bool *was_quote);
-char *scan_for_expand(char *line, bool is_quote, bool *was_quote);
-static char *expand_cmd(char *to_expand, char to_stop, int nb_to_skip);
+char *expand(char **to_expand, bool is_quote, int *was_quote);
+char *scan_for_expand(char *line, bool is_quote, int *was_quote);
+
 
 extern int get_nb_params(char **params)
 {
@@ -48,10 +52,12 @@ extern int get_nb_params(char **params)
     return res;
 }
 
+
 static char *expand_tilde(char **str)
 {
     if (strcmp("~", *str) == 0)
         return strdup(getenv("HOME"));
+
     if (strcmp("~+", *str) == 0)
     {
         (*str)++;
@@ -59,13 +65,26 @@ static char *expand_tilde(char **str)
     }
     if (strcmp("~-", *str) == 0)
     {
-        (*str)++;
-        return strdup(g_env.old_pwd);
+        if (g_env.old_pwd)
+        {
+            (*str)++;
+            return strdup(g_env.old_pwd);
+        }
     }
-    return "mdr"; //never happens
+
+    char to_return[3] = "~";
+    if (*(*str + 1) == '+' || *(*str + 1) == '-')
+    {
+        (*str)++;
+        to_return[1] = **str;
+        to_return[2] = '\0';
+    }
+
+    return strdup(to_return); //never happens
 }
 
-static char* expand_path(char *str)
+
+static char *expand_path(char *str)
 {
     struct path_globbing *glob = sh_glob(str);
 
@@ -84,81 +103,6 @@ static char* expand_path(char *str)
     return string_get_content(&string);
 }
 
-
-//to really understand take this example $(echo $(echo ok))
-static char *expand_nested_command(char *cursor, char *to_expand,
-                                                        char char_stopped_on)
-{
-    char *result;
-    if (char_stopped_on == '$')
-        result = expand_cmd(cursor, ')', 2);
-    else
-        result = expand_cmd(cursor, '`', 1);
-    char *end = cursor;
-    end += strlen(end); //move to \0 set in recursive call (matching ))
-    end++; //skip \0
-
-    *cursor = 0; //set $ to \0
-
-    char *new_to_expand = xcalloc(strlen(to_expand)
-                                    + strlen(result)
-                                    + strlen(end) + 1, sizeof(char));
-
-    strcat(new_to_expand, to_expand);
-    strcat(new_to_expand, result);
-    strcat(new_to_expand, end);
-    free(result);
-    return new_to_expand;
-}
-
-static char *le_chapeau_de_expand_cmd(char **to_expand,
-                                        char to_stop,
-                                        int nb_to_skip
-)
-{
-    char *beg = strdup(*to_expand);
-    char *end_parenthesis = beg + nb_to_skip;
-    find_corresponding_parenthesis(&end_parenthesis, NULL);
-    *to_expand += (end_parenthesis - beg - 1);
-    *end_parenthesis = '\0';
-    char *result = expand_cmd(beg, to_stop, nb_to_skip);
-    free(beg);
-    return result;
-}
-
-static char *expand_cmd(char *to_expand, char to_stop, int nb_to_skip)
-{
-    bool to_free = false;
-    to_expand += nb_to_skip;
-
-    char *cursor = to_expand;
-    while ((cursor = strpbrk(cursor, "`$)\"\'\\")) != NULL
-                                                        && *cursor != to_stop)
-    {
-        if (*cursor == '\"' || *cursor == '\'' || *cursor == '\\')
-            skip_quoting(&cursor, NULL);
-        else
-        {
-            //recursive call to expand command
-            if ((*cursor == '$' && cursor[1] == '(') || *cursor == '`')
-            {
-                to_expand = expand_nested_command(cursor, to_expand, *cursor);
-                cursor = to_expand;
-                to_free = true;
-            }
-            else    //if we fall on a $ for a var we need to skip it
-                cursor++;
-        }
-    }
-
-    *cursor = '\0'; //replace ) with 0
-
-    char *result = get_result_from_42sh(to_expand);
-    if (to_free) //inner expansion that needs to be freed
-        free(to_expand);
-    return result;
-}
-
 static void fill_command_and_params(struct command_container *command,
                                     char *expansion,
                                     struct array_list *parameters
@@ -166,20 +110,24 @@ static void fill_command_and_params(struct command_container *command,
 {
     char *beg = expansion;
     free(command->command);
-    command->command = strdup(strtok_r(expansion, IFS, &expansion));
+    command->command = strdup(strtok_r(expansion,
+                                hash_find(g_env.variables, "IFS"), &expansion));
     //first parameter is command
     array_list_append(parameters, strdup(command->command));
 
     char *param;
-    while ((param = strtok_r(NULL, IFS, &expansion)) != NULL)
+    while ((param = strtok_r(NULL,
+                        hash_find(g_env.variables, "IFS"), &expansion)) != NULL)
         array_list_append(parameters, strdup(param));
     free(beg);
 }
 
+
 static bool is_multiple_words(char *expansion)
 {
-    return strpbrk(expansion, IFS) != NULL;
+    return strpbrk(expansion, " \n\t") != NULL;
 }
+
 
 static char *expand_variable(char **to_expand)
 {
@@ -188,38 +136,37 @@ static char *expand_variable(char **to_expand)
     if (special_variable != NULL)
         return special_variable;
 
+    if (**to_expand == '$' && *(*to_expand + 1) == '\0')
+        return strdup("$");
+
     (*to_expand)++; //skip $
     char *value;
 
     char *beg = *to_expand;
-    *to_expand = strpbrk(*to_expand, "$\'\"\\\n}{[]?!@`");
-    char save;
-    if (*to_expand != NULL)
-    {
-         save = **to_expand;
-         **to_expand = '\0';
-    }
+    while ((**to_expand >= 'A' && **to_expand <= 'Z')
+            || **to_expand == '_'
+            || (**to_expand >= 'a' && **to_expand <= 'z')
+            || (**to_expand >= '0' && **to_expand <= '9'))
+        (*to_expand)++;
 
-    if ((value = hash_find(g_env.variables, beg)) == NULL)
+    char *var_name = strndup(beg, *to_expand - beg);
+
+    if ((value = hash_find(g_env.variables, var_name)) == NULL)
         value = "";
-
-    if (*to_expand != NULL)
-        **to_expand = save;
-
-    //if null, want to go to end of line
-    if(*to_expand == NULL)
-        *to_expand = beg + strlen(beg);
 
     //case we jump to next char and ++ in scan will skip it so scan goes onto it
     (*to_expand)--;
+    free(var_name);
     return strdup(value);
 }
+
 
 static char *expand_variable_brackets(char **to_expand)
 {
     (*to_expand)++; //skip $
     (*to_expand)++; //skip {
     size_t i = 0;
+
     while (*(*to_expand + i) != '}')
         ++i;
     *(*to_expand + i) = '\0'; //remove }
@@ -235,13 +182,50 @@ static char *expand_variable_brackets(char **to_expand)
     return result;
 }
 
+
 static bool is_to_expand(char c)
 {
     return c == '$' || c == '\'' || c == '"' || c == '`' || c == '\\'
                                                                 || c == '~';
 }
 
-char *scan_for_expand(char *line, bool is_quote, bool *was_quote)
+static bool contains_space(char *ifs)
+{
+    while (*ifs != '\0')
+    {
+        if (*ifs == ' ')
+            return true;
+        ifs++;
+    }
+    return false;
+}
+
+static void replace_ifs_with_mark(char *expansion)
+{
+    char *ifs = hash_find(g_env.variables, "IFS");
+    for (size_t i = 0; expansion[i] != '\0'; ++i)
+    {
+        for (size_t j = 0; ifs[j] != '\0'; ++j)
+        {
+            //overide for the space case cause differ for default content
+            if (contains_space(ifs) && expansion[i] == ' ')
+            {
+                expansion[i] = ' ';
+                break;
+            }
+            if (expansion[i] == ifs[j])
+            {
+                if (expansion[i + 1] == 0) //last char
+                    expansion[i] = '\0';
+                else
+                    expansion[i] = MARK_IFS;
+                break;
+            }
+        }
+    }
+}
+
+char *scan_for_expand(char *line, bool is_quote, int *was_quote)
 {
     //first check if can be a path expansion
     if (!is_quote && is_path_expansion(line))
@@ -258,39 +242,48 @@ char *scan_for_expand(char *line, bool is_quote, bool *was_quote)
         if (is_to_expand(*line))
         {
             char *expansion = expand(&line, is_quote, was_quote);
+            replace_ifs_with_mark(expansion);
             string_append(new_line, expansion);
             free(expansion);
         }
         else
             string_append_char(new_line, *line);
     }
+
     return string_get_content(&new_line);
 }
 
-char *expand_quote(char **cursor, bool is_quote, bool *was_quote)
+static char *replace_mark_with_space(char *expansion)
+{
+    for (size_t i = 0; expansion[i] != '\0'; ++i)
+    {
+        if (expansion[i] == MARK_IFS)
+            expansion[i] = ' ';
+    }
+    return expansion;
+}
+
+char *expand_quote(char **cursor, bool is_quote, int *was_quote)
 {
     if (**cursor == '\'')
     {
-        if (!is_quote)
+        if (!is_quote) //is quote inside quote return quote
         {
             if (was_quote != NULL)
-                *was_quote = true;
+                *was_quote = 1;
             (*cursor)++;
             char *beg = *cursor;
             *cursor = get_delimiter(*cursor, "\'");
-            **cursor = '\0'; //set ' to 0
-            return strdup(beg);
+            return strndup(beg, *cursor - beg);
         }
         else
-        {
             return strdup("'");
-        }
     }
     else if (**cursor == '"')
     {
         (*cursor)++;
         if (was_quote != NULL)
-            *was_quote = true;
+            *was_quote = 2;
         char *beg = *cursor;
         *cursor = get_delimiter(*cursor, "\"\\");
         while (**cursor != '\"')
@@ -300,11 +293,15 @@ char *expand_quote(char **cursor, bool is_quote, bool *was_quote)
                 *cursor += 2;
             *cursor = get_delimiter(*cursor, "\"\\");
         }
-        **cursor = '\0'; //set " to 0
-        return scan_for_expand(beg, true, was_quote);
+        char *extracted_value = strndup(beg, *cursor - beg);
+        char *result = scan_for_expand(extracted_value, true, was_quote);
+        free(extracted_value);
+        return result;
     }
     else if (**cursor == '\\' && !is_quote)// \ handling outside quotes
     {
+        if (*(*cursor + 1) == '\0') /*line end with \*/
+            return strdup("");
         *cursor = *cursor + 1;
         return strndup(*cursor, 1); // keep literal value after the backslash
     }
@@ -319,34 +316,109 @@ char *expand_quote(char **cursor, bool is_quote, bool *was_quote)
     }
 }
 
+
 static bool is_tidle(char *str)
 {
-    return strcmp(str, "~") == 0 || strcmp(str, "~+") == 0
-                                                    || strcmp(str, "~-") == 0;
+    return *str == '~';
 }
 
-static char *expand(char **to_expand, bool is_quote, bool *was_quote)
+static char *handle_expand_arithmetic(char **to_expand)
+{
+    char *begin = *to_expand + 3;
+
+    char *end = strstr(begin, "))");
+    char *to_compute = strndup(begin, end - begin);
+    size_t jump = strlen(to_compute);
+
+    char *new_to_compute = scan_for_expand(to_compute, true, NULL);
+    free(to_compute);
+    to_compute = new_to_compute;
+    struct node *root = parser(to_compute);
+    int result = 1;
+
+    if (root)
+    {
+        result = evaluate_tree(root);
+        destroy_ar_tree(root);
+    }
+
+    char *to_return = NULL;
+
+    int error = asprintf(&to_return, "%d", result);
+
+    *to_expand += jump + 4;
+
+    free(to_compute);
+
+    if (error == -1)
+        return NULL;
+    return to_return;
+}
+
+
+static char *expand_if_special_variable(char **to_expand)
+{
+    char *result;
+    char *end_spec;
+    char *cpy_expansion = strdup(*to_expand);
+
+    if (*cpy_expansion + 1 == '{')
+        end_spec = strpbrk(cpy_expansion, "}");
+    else
+        end_spec = strpbrk(cpy_expansion + 1, "0123456789#$@?*");
+
+    if (end_spec)
+    {
+        *(end_spec + 1) = '\0';
+    }
+
+    result = expand_special_variables(cpy_expansion);
+
+    if (result != NULL)
+        *to_expand += strlen(cpy_expansion) - 1;
+
+    free(cpy_expansion);
+    return result;
+}
+
+char *expand(char **to_expand, bool is_quote, int *was_quote)
 {
     if (is_tidle(*to_expand))
         return expand_tilde(to_expand);
     if (**to_expand == '\'' || **to_expand == '"' || **to_expand == '\\')
         return expand_quote(to_expand, is_quote, was_quote);
+    if (strncmp(*to_expand, "$((", 3) == 0)
+        return handle_expand_arithmetic(to_expand);
     if (**to_expand == '$' && *(*to_expand + 1) == '(')
-        return le_chapeau_de_expand_cmd(to_expand, ')', 2);
+        return hat_of_expand_cmd(to_expand, ')', 2);
+
+    if (**to_expand == '$')
+    {
+        char *result;
+
+        if ((result = expand_if_special_variable(to_expand)) != NULL)
+            return result;
+    }
+
     if (**to_expand == '$' && *(*to_expand + 1) == '{')
         return expand_variable_brackets(to_expand);
     if (**to_expand == '$')
         return expand_variable(to_expand);
     if (**to_expand == '`')
-        return le_chapeau_de_expand_cmd(to_expand, '`', 1);
+        return hat_of_expand_cmd(to_expand, '`', 1);
+    if (is_path_expansion(*to_expand) && !is_quote && !*was_quote)
+        return expand_path(*to_expand);
 
     //strdup cause need to be able to free anything from expand
-    return strdup(*to_expand); //no expansion
+    char *to_return = strdup(*to_expand); //no expansion
+    *to_expand += strlen(*to_expand) - 1;
+    return to_return;
 }
+
 
 static void insert_sub_var(struct array_list *expanded_parameters,
                                             char *expansion,
-                                            bool *was_quote
+                                            int *was_quote
 )
 {
     char *beg = expansion; //cause strtok_r will make expansion move
@@ -357,13 +429,23 @@ static void insert_sub_var(struct array_list *expanded_parameters,
     }
 
     //first call without NULL
-    array_list_append(expanded_parameters, strdup(strtok_r(expansion, IFS,
-                                                                &expansion)));
+    array_list_append(expanded_parameters, strdup(strtok_r(expansion,
+                                            " \n\t", &expansion)));
 
     char *param;
-    while ((param = strtok_r(NULL, IFS, &expansion)) != NULL)
-        array_list_append(expanded_parameters, strdup(param));
+    while ((param = strtok_r(NULL, " \n\t",&expansion)) != NULL)
+                        array_list_append(expanded_parameters, strdup(param));
     free(beg);
+}
+
+static bool is_empty_var(char *expansion)
+{
+    char *save = strdup(expansion);
+    char *beg = save;
+    bool result = strtok_r(save,
+                    hash_find(g_env.variables, "IFS"), &save) == NULL;
+    free(beg);
+    return result;
 }
 
 static int handle_expand_command(struct instruction *command_i)
@@ -372,14 +454,14 @@ static int handle_expand_command(struct instruction *command_i)
     struct array_list *expanded_parameters = array_list_init();
 
     char *expansion = scan_for_expand(command->command, false, NULL);
-    if (*expansion == '\0') //expand empty var
+    if (is_empty_var(expansion)) //expand empty var
     {
         free(expansion);
         size_t i = 1;
         while (command->params[i] != NULL) //while empty var we remove
         {
             expansion = scan_for_expand(command->params[i], false, NULL);
-            if (*expansion == '\0')
+            if (is_empty_var(expansion))
             {
                 free(expansion);
                 i++;
@@ -406,9 +488,9 @@ static int handle_expand_command(struct instruction *command_i)
     bool is_first = true; //to know first paramter ($a $b echo-> echo is first)
     for (size_t i = 0; command->params[i] != NULL; ++i)
     {
-        bool was_quote = false;
+        int was_quote = 0;
         expansion = scan_for_expand(command->params[i], false, &was_quote);
-        if (*expansion == '\0') //empty var
+        if (is_empty_var(expansion)) //empty var
         {
             free(expansion);
             continue;
@@ -429,7 +511,8 @@ static int handle_expand_command(struct instruction *command_i)
     //fill it
     size_t i = 0;
     for (; i < expanded_parameters->nb_element; ++i)
-        new_param_list[i] = expanded_parameters->content[i];
+        new_param_list[i] = replace_mark_with_space(
+                                            expanded_parameters->content[i]);
     new_param_list[i] = NULL;
 
     //free old list
@@ -445,6 +528,7 @@ static int handle_expand_command(struct instruction *command_i)
     return 1;
 }
 
+
 void handle_sigint(int signal)
 {
     if (signal == SIGINT)
@@ -453,6 +537,7 @@ void handle_sigint(int signal)
         g_have_to_stop = true;
     }
 }
+
 
 static int handle_if(struct instruction *ast)
 {
@@ -467,6 +552,7 @@ static int handle_if(struct instruction *ast)
     struct instruction *else_clause = if_struct->else_container;
     return execute_ast(else_clause);
 }
+
 
 static int handle_and_or_instruction(struct instruction *ast)
 {
@@ -486,6 +572,7 @@ static int handle_and_or_instruction(struct instruction *ast)
     return return_code;
 }
 
+
 static bool is_func(struct instruction *ast)
 {
     struct command_container *command = ast->data;
@@ -494,12 +581,22 @@ static bool is_func(struct instruction *ast)
     return hash_find(g_env.functions, command->command) != NULL;
 }
 
+
 static int exec_func(struct instruction *ast)
 {
     struct command_container *command = ast->data;
+    int old_argc = g_env.argc;
+    char **old_argv = g_env.argv;
+    g_env.argc = get_nb_params(command->params) - 1;
+    g_env.argv = command->params;
     struct instruction *code = hash_find(g_env.functions, command->command);
-    return execute_ast(code);
+    int to_return = execute_ast(code);
+    g_env.argc = old_argc;
+    g_env.argv = old_argv;
+    return to_return;
+
 }
+
 
 static bool is_builtin(struct instruction *ast)
 {
@@ -508,6 +605,7 @@ static bool is_builtin(struct instruction *ast)
         return false;
     return hash_find_builtin(g_env.builtins, command->command) != NULL;
 }
+
 
 //for now only execute shopt
 static int exec_builtin(struct instruction *ast)
@@ -748,7 +846,7 @@ static int check_patterns(char *pattern, struct array_list *patterns)
 {
     for (size_t i = 0; i < patterns->nb_element; i++)
     {
-        char *expantion = scan_for_expand(patterns->content[i], false, NULL);
+        char *expantion = scan_for_expand(patterns->content[i], true, NULL);
 
         if (patterns->content[i] != expantion)
         {
@@ -766,7 +864,7 @@ static int check_patterns(char *pattern, struct array_list *patterns)
 static int handle_case(struct instruction *ast)
 {
     struct case_clause *case_clause = ast->data;
-    char *expantion = scan_for_expand(case_clause->pattern, false, NULL);
+    char *expantion = scan_for_expand(case_clause->pattern, true, NULL);
 
     if (case_clause->pattern != expantion)
     {
@@ -840,9 +938,9 @@ extern int execute_ast(struct instruction *ast)
     }
 
     g_env.last_return_value = return_value;
+    
     if (ast->next != NULL && !g_env.breaks && !g_env.continues)
-    {
         return_value = execute_ast(ast->next);
-    }
+    
     return return_value;
 }

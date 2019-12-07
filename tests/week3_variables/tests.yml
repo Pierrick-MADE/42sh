@@ -30,6 +30,9 @@
 
 - name: echo ${papa
   stdin: echo ${papa
+  checks:
+    - returncode
+    - has_stderr
 
 - name: papa=toto echo ${papa >}
   stdin: |
@@ -116,29 +119,54 @@
 
 - name: var="/\\fd\/\e5%vf#\-"; echo $var
   stdin: var="/\\fd\/\e5%vf#\-"; echo $var
+- name: $abc=toto; echo $(echo ok $(echo ok) $(echo ok) '$''$abc' )
+  stdin: $abc=toto; echo $(echo ok $(echo ok) $(echo ok) '$''$abc' )
+  checks:
+    - has_stderr
+    - stdout
+    - returncode
 
 - name: echo $?
   stdin: cmd_notfnd; echo $?
+  checks:
+    - has_stderr
+    - stdout
 
 - name: echo $?toto
   stdin: echo $?toto
 
-- name: echo $$
-  stdin: echo $$
+- name: echo $$ | grep [^0-9]
+  stdin: echo $$ | grep [^0-9]
 
 - name: echo $# $1 $2 $@
   options:
     - ../tests/week3_variables/test1.sh
     - 42 42 42
 
-- name: echo $RANDOM
-  stdin: echo $RANDOM
+- name: echo $RANDOM | grep [^0-9]
+  stdin: echo $RANDOM | grep [^0-9]
 
 - name: echo $UID
   stdin: echo $UID
 
 - name: echo $SHELLOPTS
   stdin: echo $SHELLOPTS
+
+- name: echo $?toto
+  stdin: echo $?toto
+
+- name: echo $1tata
+  stdin: echo $1tata
+
+- name: echo $1 $2 $3toto
+  options:
+    - ../tests/week3_variables/test2.sh
+    - titi tata toto tutu
+
+- name: echo $0tata
+  options:
+    - ../tests/week3_variables/test3.sh
+    - tete
 
 - name: var=test; echo $(echo $var "jio" ' l' *)
   stdin: var=test; echo $(echo $var "jio" ' l' *)
