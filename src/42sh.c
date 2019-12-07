@@ -217,6 +217,7 @@ static void sigstp_handler(int signum)
 }
 
 
+#if 0
 static void sigchild_handler(int signum)
 {
     if (signum == SIGCHLD)
@@ -236,6 +237,7 @@ static void sigchild_handler(int signum)
         }
     }
 }
+#endif
 
 static void handle_signal(void)
 {
@@ -243,9 +245,10 @@ static void handle_signal(void)
         errx(1, "an error occurred while setting up a signal handler");
     if (signal(SIGINT, sigint_handler) == SIG_ERR)
         errx(1, "an error occurred while setting up a signal handler");
+    /*
     if (signal(SIGCHLD, sigchild_handler) == SIG_ERR)
         errx(1, "an error occurred while setting up a signal handler");
-
+    */
 }
 
 static int execute_and_print_ast(struct instruction *ast)
