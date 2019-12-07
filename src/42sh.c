@@ -37,6 +37,9 @@
 #include "builtins/wait.h"
 #include "job_control/jobs_array.h"
 #include "builtins/jobs.h"
+#include "builtins/alias/alias.h"
+#include "builtins/alias/unalias.h"
+
 
 static void sigint_handler(int signum)
 {
@@ -116,6 +119,7 @@ void end_call_and_free_all(struct queue *lexer)
     hash_free(g_env.functions);
     hash_free(g_env.builtins);
     hash_free(g_env.variables);
+    hash_free(g_env.aliases);
     free(g_env.pwd);
     for (int i = 0; g_env.envvar[i]; i++)
     {
@@ -151,11 +155,14 @@ static void init_builtins_hash_map(struct hash_map *builtins)
     hash_insert_builtin(builtins, "fg", fg);
     hash_insert_builtin(builtins, "jobs", jobs);
     hash_insert_builtin(builtins, "wait", wait_job);
+    hash_insert_builtin(builtins, "alias", alias);
+    hash_insert_builtin(builtins, "unalias", unalias);
 }
 
 static void init_all(struct hash_map *functions,
                             struct hash_map *builtins,
                             struct hash_map *variables,
+                            struct hash_map *aliases,
                             char **env,
                             char *path
 )
@@ -176,13 +183,20 @@ static void init_all(struct hash_map *functions,
     g_env.functions = functions;
     g_env.builtins = builtins;
     g_env.variables = variables;
+    g_env.aliases = aliases;
     hash_init(functions, NB_SLOTS);
     hash_init(variables, NB_SLOTS);
+    hash_init(aliases, NB_SLOTS);
     init_builtins_hash_map(g_env.builtins);
     g_env.options.option_expand_aliases = true;
     g_env.options.option_sourcepath = true;
     g_env.old_pwd = NULL;
+    set_pwd();
 
+    // Default Prompt
+    hash_insert(variables, "PS1", "42sh$ ", STRING);
+    hash_insert(variables, "PS2", "> ", STRING);
+    hash_insert(variables, "IFS", " \t\n", STRING);
 
     // History
     char *history_path = get_history_file_path();
@@ -247,7 +261,8 @@ int main(int argc, char *argv[], char *env[])
     struct hash_map functions; //declared on the stack no need to be freed
     struct hash_map builtins;
     struct hash_map variables;
-    init_all(&functions, &builtins, &variables, env, argv[0]);
+    struct hash_map aliases;
+    init_all(&functions, &builtins, &variables, &aliases, env, argv[0]);
 
     int return_code = 0;
 
@@ -276,7 +291,7 @@ int main(int argc, char *argv[], char *env[])
     while (42 && !is_end)
     {
         int error = 0;
-        g_env.prompt = "42sh$ ";
+        g_env.prompt = 1;
         struct instruction *ast = parse_input(lexer, &is_end, &error);
 
         if (ast)
