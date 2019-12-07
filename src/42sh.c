@@ -34,6 +34,7 @@
 #include "builtins/export.h"
 #include "builtins/fg.h"
 #include "builtins/bg.h"
+#include "builtins/wait.h"
 #include "job_control/jobs_array.h"
 #include "builtins/jobs.h"
 
@@ -149,8 +150,7 @@ static void init_builtins_hash_map(struct hash_map *builtins)
     hash_insert_builtin(builtins, "bg", bg);
     hash_insert_builtin(builtins, "fg", fg);
     hash_insert_builtin(builtins, "jobs", jobs);
-    //hash_insert_builtin(builtins, "wait", wait);
-    //hash_insert_builtin(builtins, "jobs", jobs);
+    hash_insert_builtin(builtins, "wait", wait_job);
 }
 
 static void init_all(struct hash_map *functions,

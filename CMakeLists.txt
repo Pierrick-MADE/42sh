@@ -59,6 +59,7 @@ set(SRC_FILES
     src/builtins/export.c
     src/builtins/fg.c
     src/builtins/bg.c
+    src/builtins/wait.c
     src/builtins/jobs.c
     src/path_expention/path_exepension.c
     src/variables/expand_special_variables.c
