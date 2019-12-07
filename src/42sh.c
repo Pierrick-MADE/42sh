@@ -33,6 +33,8 @@
 #include "builtins/export.h"
 #include "builtins/fg.h"
 #include "builtins/bg.h"
+#include "job_control/jobs_array.h"
+#include "builtins/jobs.h"
 
 static void sigint_handler(int signum)
 {
@@ -145,6 +147,7 @@ static void init_builtins_hash_map(struct hash_map *builtins)
     hash_insert_builtin(builtins, "export", export);
     hash_insert_builtin(builtins, "bg", bg);
     hash_insert_builtin(builtins, "fg", fg);
+    hash_insert_builtin(builtins, "jobs", jobs);
     //hash_insert_builtin(builtins, "wait", wait);
     //hash_insert_builtin(builtins, "jobs", jobs);
 }
@@ -187,12 +190,15 @@ static void init_all(struct hash_map *functions,
     free(history_path);
 
     g_env.path_to_binary = path;
+    destroy_all_jobs();
 }
 
 static void sigstp_handler(int signum)
 {
     if (signum == SIGTSTP)
-        kill(g_env.pid, SIGSTOP);
+    {
+        kill(g_env.last_pid, SIGSTOP);
+    }
 }
 
 static void handle_signal(void)
@@ -257,6 +263,13 @@ int main(int argc, char *argv[], char *env[])
 
         if (!is_end && error)
             handle_parser_errors(lexer);
+
+        if (is_end && check_if_jobs_running())
+        {
+            fprintf(stderr, "\nthere are still background jobs running\n");
+            jobs(NULL);
+            is_end = 0;
+        }
     }
 
     end_call_and_free_all(lexer);

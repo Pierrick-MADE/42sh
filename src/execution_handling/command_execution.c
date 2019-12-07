@@ -15,14 +15,17 @@
 #include "../input_output/read.h"
 #include "../data_structures/data_string.h"
 #include "../input_output/get_next_line.h"
+#include "../job_control/jobs_array.h"
 
 int exec_cmd(struct instruction *cmd_container)
 {
     struct command_container *cmd = cmd_container->data;
 
     int pid = fork();
+
     if (pid == -1)
         exit(EXIT_FAILURE);
+
     if (pid == 0)
     {
         execvp(cmd->command, cmd->params);
@@ -36,13 +39,37 @@ int exec_cmd(struct instruction *cmd_container)
             errx(-1, "execvp has failed");
     }
 
-    g_env.pid = pid;
+    g_env.last_pid = pid;
 
     if (cmd_container->is_binary_and) //not wait
+    {
+        g_env.last_job = create_job(pid, strdup(cmd->command));
+
+        if (!g_env.last_job)
+            return 1;
+
+        print_access_jobs(g_env.last_job, "Started ");
         return 0;
+    }
 
     int wstatus;
     waitpid(pid, &wstatus, WUNTRACED);
+
+    if (! WIFEXITED(wstatus))
+    {
+        if (WIFSTOPPED(wstatus))
+        {
+            g_env.last_job = create_job(pid, strdup(cmd->command));
+
+            if (!g_env.last_job)
+                return 1;
+
+            print_access_jobs(g_env.last_job, "Stopped ");
+            g_env.last_job->status = "Stopped";
+            return 0;
+        }
+    }
+
     return WEXITSTATUS(wstatus);
 }
 
