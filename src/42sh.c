@@ -213,6 +213,10 @@ static void sigchild_handler(int signum)
         if (WIFEXITED(wstatus))
         {
             int index_job = is_pid_in_array(pid);
+
+            if (index_job == -1)
+                return;
+
             print_access_jobs(g_env.childs_pid[index_job], "Done ");
             terminate_job(g_env.childs_pid[index_job]);
         }
