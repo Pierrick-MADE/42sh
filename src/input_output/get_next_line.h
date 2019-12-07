@@ -11,6 +11,7 @@
 
 #include "../parameters_handling/parameters_handler.h"
 #include "../data_structures/hash_map.h"
+#include "../job_control/jobs_array.h"
 
 extern struct shell_environment g_env;
 
@@ -39,7 +40,9 @@ struct shell_environment
     char *old_pwd;
     int argc;
     char **argv;
-    pid_t pid;
+    struct job *childs_pid[512];
+    struct job *last_job;
+    pid_t last_pid;
 };
 
 /**

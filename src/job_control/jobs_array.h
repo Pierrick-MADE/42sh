@@ -8,11 +8,13 @@
 
 #pragma once
 
+#define MAX_JOBS 512
 
 struct job {
     pid_t pid;
     int array_index;
     char *name;
+    char *status;
 };
 
 
@@ -27,3 +29,5 @@ extern void terminate_job(struct job *job);
 extern void destroy_all_jobs(void);
 
 extern int check_if_jobs_running(void);
+
+extern int is_pid_in_array(pid_t pid);

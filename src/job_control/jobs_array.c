@@ -9,8 +9,6 @@
 #include "../input_output/get_next_line.h"
 #include "../memory/memory.h"
 
-#define MAX_JOBS 512
-
 extern void print_access_jobs(struct job *job, char *action)
 {
     printf("[%d] %s%d %s\n", job->array_index, action, job->pid, job->name);
@@ -77,6 +75,18 @@ extern int check_if_jobs_running(void)
     for (int i = 0; i < MAX_JOBS; i++)
     {
         if (g_env.childs_pid[i])
+            return 1;
+    }
+
+    return 0;
+}
+
+
+extern int is_pid_in_array(pid_t pid)
+{
+    for (int i = 0; i < MAX_JOBS; i++)
+    {
+        if (g_env.childs_pid[i]->pid == pid)
             return 1;
     }
 

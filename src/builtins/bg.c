@@ -9,5 +9,7 @@
 
 int bg(char **params)
 {
-    kill(g_env.pid, SIGCONT);
+    params = params;
+    kill(g_env.last_job->pid, SIGCONT);
+    return 1;
 }

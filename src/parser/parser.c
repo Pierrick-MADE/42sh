@@ -697,6 +697,9 @@ static struct instruction *parse_compound_list_break(struct queue *lexer)
 
     if (NEXT_IS(";") || NEXT_IS("&") || NEXT_IS("\n"))
     {
+        if (NEXT_IS("&"))
+            and_or->is_binary_and = true;
+
         EAT();
         and_or->next = parse_compound_list_break(lexer);
     }
