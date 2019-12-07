@@ -6,6 +6,7 @@
 #include <unistd.h>
 #include <err.h>
 #include <errno.h>
+#include <signal.h>
 
 #include "command_container.h"
 #include "command_execution.h"
@@ -18,10 +19,32 @@
 #include "../job_control/jobs_array.h"
 #include "../command_substitution/command_substitution.h"
 
+
+static void sigchild_handler(int signum)
+{
+    if (signum == SIGCHLD)
+    {
+        int wstatus;
+        pid_t pid = wait(&wstatus);
+
+        if (WIFEXITED(wstatus))
+        {
+            int index_job = is_pid_in_array(pid);
+
+            if (index_job == -1)
+                return;
+
+            print_access_jobs(g_env.childs_pid[index_job], "Done ");
+            terminate_job(g_env.childs_pid[index_job]);
+        }
+    }
+}
+
 int exec_cmd(struct instruction *cmd_container)
 {
     struct command_container *cmd = cmd_container->data;
-
+    int wstatus;
+    signal(SIGCHLD, SIG_DFL);
     int pid = fork();
 
     if (pid == -1)
@@ -44,6 +67,7 @@ int exec_cmd(struct instruction *cmd_container)
 
     if (cmd_container->is_binary_and) //not wait
     {
+        signal(SIGCHLD, sigchild_handler);
         g_env.last_job = create_job(pid, strdup(cmd->command));
 
         if (!g_env.last_job)
@@ -53,13 +77,13 @@ int exec_cmd(struct instruction *cmd_container)
         return 0;
     }
 
-    int wstatus;
     waitpid(pid, &wstatus, WUNTRACED);
 
     if (! WIFEXITED(wstatus))
     {
         if (WIFSTOPPED(wstatus))
         {
+            signal(SIGCHLD, sigchild_handler);
             g_env.last_job = create_job(pid, strdup(cmd->command));
 
             if (!g_env.last_job)
