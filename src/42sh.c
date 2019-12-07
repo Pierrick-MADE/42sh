@@ -212,6 +212,9 @@ static void sigstp_handler(int signum)
 {
     if (signum == SIGTSTP)
     {
+        if (!g_env.last_pid)
+            return;
+
         kill(g_env.last_pid, SIGSTOP);
     }
 }

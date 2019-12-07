@@ -44,8 +44,8 @@ int exec_cmd(struct instruction *cmd_container)
 {
     struct command_container *cmd = cmd_container->data;
     int wstatus;
-    signal(SIGCHLD, SIG_DFL);
     int pid = fork();
+    signal(SIGCHLD, SIG_DFL);
 
     if (pid == -1)
         exit(EXIT_FAILURE);
@@ -79,11 +79,11 @@ int exec_cmd(struct instruction *cmd_container)
 
     waitpid(pid, &wstatus, WUNTRACED);
 
+    signal(SIGCHLD, sigchild_handler);
     if (! WIFEXITED(wstatus))
     {
         if (WIFSTOPPED(wstatus))
         {
-            signal(SIGCHLD, sigchild_handler);
             g_env.last_job = create_job(pid, strdup(cmd->command));
 
             if (!g_env.last_job)

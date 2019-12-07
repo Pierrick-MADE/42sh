@@ -53,6 +53,8 @@ int fg(char **params)
     {
         print_access_jobs(job, "Done ");
         terminate_job(job);
+        g_env.last_job = NULL;
+        g_env.last_pid = 0;
     }
 
     return WEXITSTATUS(wstatus);
